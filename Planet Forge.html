@@ -1,0 +1,217 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planet Forge</title>
+<style>
+:root{--bg:#04060c;--pn:rgba(12,16,28,.84);--tx:#dfe6f5;--mu:#8b97b5;--ac:#7cb4ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--bg);color:var(--tx);font:13px system-ui,-apple-system,Segoe UI,sans-serif;overflow:hidden}
+canvas{display:block;position:fixed;inset:0;touch-action:none}
+#ui{position:fixed;top:calc(10px + env(safe-area-inset-top,0px));left:10px;width:290px;max-width:calc(100vw - 20px);max-height:calc(100% - 24px - env(safe-area-inset-top,0px));overflow:auto;background:var(--pn);backdrop-filter:blur(12px);border:1px solid #ffffff22;border-radius:14px;padding:12px 14px}
+summary{cursor:pointer;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:11px;color:var(--ac)}
+h1{margin:8px 0 0;font-size:22px;font-weight:700}
+.sub{color:var(--mu);margin-bottom:10px}
+label{display:flex;justify-content:space-between;margin:10px 0 3px;color:var(--mu);font-size:12px}
+label b{color:var(--tx);font-weight:600}
+input,select,button{width:100%;box-sizing:border-box;background:#ffffff12;color:var(--tx);border:1px solid #ffffff25;border-radius:8px;padding:7px 8px;font:inherit}
+select option{background:#10141f}
+input[type=range]{padding:0;accent-color:var(--ac)}
+.row{display:flex;gap:6px}.row>*{flex:1}.row input{flex:3}
+button{cursor:pointer}button:hover{background:#ffffff24}
+.chk{display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--mu)}.chk input{width:auto}
+#st{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin-top:12px;padding-top:10px;border-top:1px solid #ffffff1c;font-size:12px}
+#st span{color:var(--mu)}#st b{font-weight:600;text-align:right}
+</style></head><body>
+<details id="ui" open><summary>Planet Forge</summary>
+<h1 id="nm"></h1><div class="sub" id="sub"></div>
+<label>Seed <b>1 of 999,999,999 worlds</b></label>
+<div class="row"><button id="pv">◀</button><input id="seed" type="number" min="0" max="999999999" value="4217"><button id="nx">▶</button><button id="rn">🎲</button></div>
+<label>Planet type</label>
+<select id="type"><option value="-1">Auto (from seed)</option><option value="0">Rocky / Terran</option><option value="1">Gas giant</option><option value="2">Ice giant</option><option value="3">Ocean world</option><option value="4">Lava world</option><option value="5">Desert world</option><option value="6">Frozen world</option><option value="7">Toxic / Alien</option></select>
+<label>Size <b id="sv"></b></label><input id="size" type="range" min="0" max="100" value="38">
+<label>Surface gravity <b id="gv"></b></label><input id="grav" type="range" min="0.1" max="5" step="0.05" value="1">
+<label>Rings</label>
+<select id="rings"><option value="-1">Auto (from seed)</option><option value="1">Yes</option><option value="0">No</option></select>
+<label>Ring composition</label>
+<select id="comp"><option value="-1">Auto</option><option value="0">Water ice</option><option value="1">Dark rock</option><option value="2">Fine dust</option><option value="3">Metallic</option><option value="4">Crystal / iridescent</option><option value="5">Mixed ice &amp; rock</option></select>
+<div class="chk"><input id="rot" type="checkbox" checked><span>Spin planet</span></div>
+<div id="st"></div>
+<div class="sub" style="margin-top:10px">Drag to orbit · scroll / pinch to zoom. Gravity flattens terrain, thickens atmosphere &amp; tightens gas bands.</div>
+</details>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const mb=a=>()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+const TN=['Rocky World','Gas Giant','Ice Giant','Ocean World','Lava World','Desert World','Frozen World','Toxic World'];
+const CN=['Water ice','Dark rock','Fine dust','Metallic','Crystal','Mixed ice & rock'];
+const L=new THREE.Vector3(.75,.25,.62).normalize();
+const hx=(h,s,l)=>new THREE.Color().setHSL(((h%1)+1)%1,s,l);
+
+/* ---------- shaders ---------- */
+const VS='varying vec3 vP,vW;void main(){vP=position;vW=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(vW,1.);}';
+const NZ=`float h31(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
+float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*f*(f*(f*6.-15.)+10.);
+return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),mix(mix(h31(i+vec3(0,0,1)),h31(i+vec3(1,0,1)),f.x),mix(h31(i+vec3(0,1,1)),h31(i+vec3(1,1,1)),f.x),f.y),f.z);}
+float fbm(vec3 p){float s=0.,a=.5;for(int i=0;i<6;i++){s+=a*vn(p);p=p*2.03+vec3(1.7,9.2,3.1);a*=.5;}return s;}
+float rg(vec3 q){float s=0.,a=.5;for(int i=0;i<4;i++){s+=a*(1.-abs(2.*vn(q)-1.));q*=2.1;a*=.5;}return s;}`;
+const PF=`varying vec3 vP,vW;uniform float uT,uSc,uWarp,uSea,uCap,uRel,uBands,uTime;uniform vec3 uSeed,uL,uStorm,uC1,uC2,uC3,uC4;uniform mat3 uM;
+${NZ}
+float H(vec3 p){vec3 q=p*uSc+uSeed;q+=uWarp*.6*(vec3(vn(q*1.7),vn(q*1.7+7.),vn(q*1.7+13.))-.5);return clamp((fbm(q)-.3)*2.,0.,1.);}
+void main(){
+ vec3 P=normalize(vP),V=normalize(cameraPosition-vW),col,em=vec3(0.),No=P;float sp=0.;bool wat=false;float k=uT;
+ if(k==1.||k==2.){
+  float lat=P.y,tb=fbm(vec3(P.x*2.,P.y*5.,P.z*2.)*uSc*.5+uSeed);
+  float lon=atan(P.z,P.x);
+  vec2 d=vec2((lat-uStorm.x)*2.2,(mod(lon-uStorm.y+3.1416,6.2832)-3.1416)*.9*sqrt(1.-uStorm.x*uStorm.x));
+  float r=length(d)/uStorm.z,sw=smoothstep(1.,0.,r);
+  float f=lat*uBands+uWarp*6.*(tb-.5)+sin(lat*uBands*2.3+uSeed.x)*.3+sw*1.6*sin(atan(d.y,d.x)*2.+r*7.);
+  float b=.5+.5*sin(f*3.1416);
+  float st=fbm(vec3(P.x*5.,P.y*30.*(.5+uWarp),P.z*5.)+uSeed*2.+tb);
+  col=mix(uC1,uC2,b);col=mix(col,uC3,smoothstep(.4,.7,st)*.55);col=mix(col,uC4,smoothstep(.6,.9,tb)*.4);
+  if(k==1.)col=mix(col,uC4*.8+uC3*.3,smoothstep(1.,.3,r)*.75);
+  col*=1.-smoothstep(.8,1.,r)*smoothstep(1.2,.95,r)*.25;
+ }else{
+  float h=H(P),e=.003;
+  vec3 g=vec3(H(P+vec3(e,0.,0.))-h,H(P+vec3(0.,e,0.))-h,H(P+vec3(0.,0.,e))-h)/e;g-=P*dot(g,P);
+  float lat=abs(P.y);
+  if(k==4.){
+   col=mix(uC3,uC4,smoothstep(.2,.9,h));col*=.7+.6*vn(P*50.);
+   float rr=rg(P*uSc*2.+uSeed),gl=max(smoothstep(.66,.85,rr),smoothstep(uSea,uSea-.08,h));
+   em=mix(uC1,uC2,fbm(P*8.+uSeed))*gl*1.7;col=mix(col,vec3(0.),gl);g*=1.-gl;
+  }else if(k==6.){
+   col=mix(uC3,uC4,h);col*=.9+.2*vn(P*70.);float rr=rg(P*uSc*1.5+uSeed);col=mix(col,uC1,smoothstep(.68,.85,rr)*.85);
+  }else if(k==5.){
+   col=mix(uC3,uC4,smoothstep(.2,.8,h));col*=.9+.1*sin(h*60.+vn(P*8.+uSeed)*6.);col*=.85+.3*vn(P*80.);
+  }else{
+   if(h<uSea){wat=true;col=mix(uC1,uC2,smoothstep(uSea-.3,uSea,h));g*=0.;}
+   else{float t=(h-uSea)/(1.-uSea);col=mix(uC3,uC4,smoothstep(.1,.9,t));col*=.8+.4*vn(P*60.);col=mix(col,uC4*1.2,smoothstep(.65,.95,t)*.5);}
+  }
+  if(k!=6.&&k!=4.){float cp=lat+.25*(fbm(P*4.+uSeed)-.5)+(h-uSea)*.1;if(cp>uCap){col=mix(col,vec3(.9,.95,1.),smoothstep(0.,.04,cp-uCap));wat=false;}}
+  No=normalize(P-g*uRel*.12);
+ }
+ vec3 N=normalize(uM*No);float df=dot(N,uL),lit=max(df,0.)*1.15*smoothstep(-.1,.2,df+.1);
+ if(wat)sp=pow(max(dot(reflect(-uL,N),V),0.),70.)*.6*lit;
+ gl_FragColor=vec4(col*(lit+.03)+em+vec3(sp),1.);
+}`;
+const CF=`varying vec3 vP,vW;uniform float uCov,uTime;uniform vec3 uSeed,uL,uCl;uniform mat3 uM;
+${NZ}
+void main(){vec3 P=normalize(vP);float n=fbm(P*vec3(2.5,3.5,2.5)*1.2+uSeed+vec3(0.,0.,uTime*.01))*.8+.2*vn(P*20.);
+ float a=smoothstep(1.-uCov,1.-uCov+.22,n);vec3 N=normalize(uM*P);float df=max(dot(N,uL),0.);
+ gl_FragColor=vec4(uCl*(df*1.1+.03),a*.92);}`;
+const AF=`varying vec3 vN,vW;uniform vec3 uL,uCol;uniform float uI,uP;
+void main(){vec3 V=normalize(cameraPosition-vW);float f=pow(1.-abs(dot(vN,V)),uP);float s=smoothstep(-.35,.5,dot(vN,uL));gl_FragColor=vec4(uCol*f*s*uI,1.);}`;
+const RF=`varying vec3 vL,vW;uniform sampler2D t;uniform float i,o,R;uniform vec3 L;
+void main(){float u=(length(vL.xy)-i)/(o-i);vec4 c=texture2D(t,vec2(u,.5));
+ float b=dot(vW,L),cc=dot(vW,vW)-R*R,disc=b*b-cc,sh=(disc>0.&&b<0.)?.1:1.;
+ gl_FragColor=vec4(c.rgb*(.08+.92*sh),c.a);}`;
+
+/* ---------- scene ---------- */
+const ren=new THREE.WebGLRenderer({antialias:true});ren.setPixelRatio(Math.min(devicePixelRatio,2));document.body.appendChild(ren.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,2000);
+const sun=new THREE.DirectionalLight(0xfff2e0,1.4);sun.position.copy(L).multiplyScalar(50);scene.add(sun,new THREE.AmbientLight(0x223048,.5));
+{const n=4000,p=new Float32Array(n*3),c=new Float32Array(n*3),r=mb(99);for(let i=0;i<n;i++){const u=r()*2-1,a=r()*6.283,s=Math.sqrt(1-u*u);p.set([s*Math.cos(a)*600,u*600,s*Math.sin(a)*600],i*3);const b=.4+r()*.6,t=r();c.set([b*(.8+t*.2),b*.9,b*(1-t*.3)],i*3)}
+ const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(p,3));g.setAttribute('color',new THREE.BufferAttribute(c,3));
+ scene.add(new THREE.Points(g,new THREE.PointsMaterial({size:1.6,sizeAttenuation:false,vertexColors:true})))}
+const tilt=new THREE.Group();scene.add(tilt);
+const base=()=>({uSeed:{value:new THREE.Vector3()},uL:{value:L},uM:{value:new THREE.Matrix3()},uTime:{value:0}});
+const pU=Object.assign(base(),{uT:{value:0},uSc:{value:2},uWarp:{value:.5},uSea:{value:.4},uCap:{value:1.2},uRel:{value:1},uBands:{value:8},uStorm:{value:new THREE.Vector3()},uC1:{value:new THREE.Color()},uC2:{value:new THREE.Color()},uC3:{value:new THREE.Color()},uC4:{value:new THREE.Color()}});
+const cU=Object.assign(base(),{uCov:{value:.5},uCl:{value:new THREE.Color(1,1,1)}});
+const aU={uL:{value:L},uCol:{value:new THREE.Color()},uI:{value:1},uP:{value:3}};
+const sg=new THREE.SphereGeometry(1,128,96);
+const planet=new THREE.Mesh(sg,new THREE.ShaderMaterial({vertexShader:VS,fragmentShader:PF,uniforms:pU}));
+const cloud=new THREE.Mesh(sg,new THREE.ShaderMaterial({vertexShader:VS,fragmentShader:CF,uniforms:cU,transparent:true,depthWrite:false}));
+const atm=new THREE.Mesh(new THREE.SphereGeometry(1,64,48),new THREE.ShaderMaterial({vertexShader:'varying vec3 vN,vW;void main(){vN=normalize(mat3(modelMatrix)*normal);vW=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(vW,1.);}',fragmentShader:AF,uniforms:aU,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false}));
+tilt.add(planet,cloud,atm);
+let ring=null,moons=[];
+
+/* ---------- generation ---------- */
+function gen(seed,o){
+ const r=mb(seed*7919+13),R=(a,b)=>a+(b-a)*r();
+ const w=[.2,.18,.1,.12,.12,.1,.08,.1];let x=r(),t=0;for(;t<7&&x>w[t];t++)x-=w[t];if(o.type>=0)t=o.type;
+ const wild=r()<.15,h0=r(),P={t,seed:new THREE.Vector3(R(0,100),R(0,100),R(0,100)),sc:R(1.2,3),warp:R(.2,.9),sea:-1,cap:1.3,cloud:0,bands:R(5,16),atm:hx(.58,.8,.6),atmK:1,storm:new THREE.Vector3(R(-.6,.6),R(-3,3),R(.12,.3)),tilt:R(0,.6),day:R(8,60),cl:hx(0,0,1),temp:0,c:[hx(0,0,0),hx(0,0,0),hx(0,0,0),hx(0,0,0)]};
+ const hue=R(.06,.36),pick=wild?h0:hue;
+ if(t==0){P.sea=R(.25,.55);P.c=[hx(.6,.7,.15),hx(.55,.6,.35),hx(pick,.45,.3),hx(pick+.03,.2,.5)];P.cap=R(.7,1.3);P.cloud=R(.3,.6);P.temp=R(240,310)}
+ if(t==1){const h=h0;P.c=[hx(h,.5,.55),hx(h+.05,.55,.7),hx(h-.04,.4,.35),hx(h+.1,.6,.8)];P.atm=hx(h,.5,.6);P.atmK=.6;P.temp=R(90,400)}
+ if(t==2){const h=R(.5,.64);P.c=[hx(h,.6,.45),hx(h+.03,.55,.6),hx(h-.03,.5,.35),hx(h,.4,.85)];P.warp*=.4;P.atm=hx(h,.6,.6);P.temp=R(50,90)}
+ if(t==3){P.sea=R(.55,.75);const h=wild?h0:.58;P.c=[hx(h,.7,.12),hx(h-.03,.65,.4),hx(pick,.4,.3),hx(.1,.2,.55)];P.cap=R(.85,1.3);P.cloud=R(.4,.75);P.temp=R(270,320)}
+ if(t==4){P.sea=R(.2,.4);P.c=[hx(R(0,.05),1,.5),hx(R(.08,.15),1,.6),hx(0,.1,.06),hx(.03,.2,.14)];P.cloud=.35;P.cl=hx(.02,.2,.12);P.atm=hx(.05,.9,.5);P.atmK=1.3;P.temp=R(800,1500)}
+ if(t==5){P.c=[hx(0,0,0),hx(0,0,0),hx(wild?h0:R(.04,.11),.55,.45),hx(wild?h0+.04:R(.07,.15),.5,.7),];P.cap=R(1,1.3);P.cloud=.15;P.atm=hx(.07,.5,.6);P.temp=R(300,380)}
+ if(t==6){P.c=[hx(.6,.7,.3),hx(0,0,0),hx(.58,.3,.8),hx(.55,.2,.95)];P.cloud=.15;P.atm=hx(.58,.5,.7);P.temp=R(40,200)}
+ if(t==7){const h=[.25,.8,.14,.45][r()*4|0];P.sea=R(.35,.6);P.c=[hx(h,.8,.2),hx(h+.03,.8,.4),hx(h+.1,.4,.25),hx(h+.15,.3,.45)];P.cloud=R(.4,.7);P.cl=hx(h,.4,.8);P.atm=hx(h,.8,.55);P.temp=R(250,450)}
+ const has=o.rings==1?(r(),true):o.rings==0?(r(),false):r()<(t==1||t==2?.7:.1);
+ P.ring=has;P.ri=R(1.35,1.9);P.ro=R(1.5,2.7);P.comp=o.comp>=0?(r(),o.comp):r()*6|0;P.rs=r()*1e6|0;P.moons=r()*4|0;P.ms=r()*1e6|0;
+ return P}
+function nm(s){const r=mb(s*91+5),S=['ka','ro','vel','tha','zor','mi','xen','ar','ul','pa','del','qui','nox','eri','sol','ba','yth','or','lun','cae','vor','ish'];let n='';for(let i=0,k=2+(r()*2|0);i<k;i++)n+=S[r()*S.length|0];return n[0].toUpperCase()+n.slice(1)+' '+['I','II','III','IV','V','VI','VII','b','c','d'][r()*10|0]}
+
+function ringTex(seed,ci){
+ const r=mb(seed),W=2048,cv=document.createElement('canvas');cv.width=W;cv.height=2;const g=cv.getContext('2d'),im=g.createImageData(W,2);
+ const oc=[6,16,48,150,500].map(f=>({f,a:Array.from({length:f+2},r)}));
+ const n=u=>{let s=0,w=1,tw=0;for(const o of oc){const x=Math.min(u,.9999)*o.f,i=x|0,k=x-i;s+=w*(o.a[i]*(1-k)+o.a[i+1]*k);tw+=w;w*=.6}return s/tw};
+ const gaps=Array.from({length:4},()=>[r(),.01+r()*.05]),hu=r(),cc=new THREE.Color();
+ for(let i=0;i<W;i++){const u=i/W,m=n(1-u);let d=Math.pow(Math.max(0,n(u)*1.9-.35),1.15);
+  for(const[c,w]of gaps){const q=Math.abs(u-c)/w;if(q<1)d*=q*q}
+  d*=Math.min(1,u*14)*Math.min(1,(1-u)*14);
+  let a=Math.min(1,d*1.3),v=.7+.6*m,c;
+  const ice=[.9,.95,1],rock=[.6,.5,.4];
+  if(ci==0)c=ice;else if(ci==1)c=rock;else if(ci==2){c=[.8,.68,.5];a*=.55}
+  else if(ci==3){const s=r()<.03?1.6:1;c=[.85*s,.62*s,.45*s]}
+  else if(ci==4){cc.setHSL((hu+u*2)%1,.6,.65);c=[cc.r,cc.g,cc.b]}
+  else{const k=Math.min(1,Math.max(0,(m-.4)*5));c=ice.map((x,j)=>x*k+rock[j]*(1-k))}
+  for(let y=0;y<2;y++){const j=(y*W+i)*4;im.data[j]=Math.min(255,c[0]*v*255);im.data[j+1]=Math.min(255,c[1]*v*255);im.data[j+2]=Math.min(255,c[2]*v*255);im.data[j+3]=a*255}}
+ g.putImageData(im,0,0);const tx=new THREE.CanvasTexture(cv);tx.minFilter=THREE.LinearFilter;return tx}
+
+let camD=10,tgtD=10,zoom=1,th=.6,ph=1.35,P0;
+function build(){
+ const seed=Math.max(0,Math.min(999999999,+$('seed').value|0)),size=.3*Math.pow(80,$('size').value/100),g=+$('grav').value;
+ const P=P0=gen(seed,{type:+$('type').value,rings:+$('rings').value,comp:+$('comp').value}),Rd=Math.pow(size,.55);
+ const gas=P.t==1||P.t==2;
+ Object.assign(pU.uT,{value:P.t});pU.uSeed.value.copy(P.seed);pU.uSc.value=P.sc;pU.uWarp.value=P.warp;pU.uSea.value=P.sea;pU.uCap.value=P.cap;
+ pU.uRel.value=Math.min(2.5,1/g);pU.uBands.value=P.bands*(.6+.4*Math.min(g,3));pU.uStorm.value.copy(P.storm);
+ P.c.forEach((c,i)=>pU['uC'+(i+1)].value.copy(c));
+ cU.uSeed.value.copy(P.seed).add(new THREE.Vector3(5,3,8));cU.uCov.value=Math.min(.9,P.cloud*Math.pow(g,.3));cU.uCl.value.copy(P.cl);
+ planet.scale.setScalar(Rd);cloud.scale.setScalar(Rd*1.012);cloud.visible=!gas&&P.cloud>0;
+ const ar=1+.02+.03*Math.min(g,5)*P.atmK;atm.scale.setScalar(Rd*(ar+.03));aU.uCol.value.copy(P.atm);aU.uI.value=.9+.25*g*P.atmK;aU.uP.value=3.2-Math.min(g,3)*.3;
+ tilt.rotation.z=P.tilt;
+ if(ring){tilt.remove(ring);ring.geometry.dispose();ring.material.uniforms.t.value.dispose();ring=null}
+ let outer=Rd;
+ if(P.ring){const ri=Rd*P.ri;outer=ri*P.ro;
+  ring=new THREE.Mesh(new THREE.RingGeometry(ri,outer,160,1),new THREE.ShaderMaterial({vertexShader:'varying vec3 vL,vW;void main(){vL=position;vW=(modelMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*viewMatrix*vec4(vW,1.);}',fragmentShader:RF,side:THREE.DoubleSide,transparent:true,depthWrite:false,uniforms:{t:{value:ringTex(P.rs,P.comp)},i:{value:ri},o:{value:outer},R:{value:Rd},L:{value:L}}}));
+  ring.rotation.x=-Math.PI/2;tilt.add(ring)}
+ moons.forEach(m=>{tilt.remove(m.mesh);m.mesh.geometry.dispose();m.mesh.material.dispose()});moons=[];
+ const mr=mb(P.ms);let dist=Math.max(outer,Rd)*1.3;
+ for(let i=0;i<P.moons;i++){const s=Rd*(.05+mr()*.13),gm=new THREE.IcosahedronGeometry(1,3),pp=gm.attributes.position,sd=mr()*50;
+  for(let j=0;j<pp.count;j++){const x=pp.getX(j),y=pp.getY(j),z=pp.getZ(j),d=1+.18*(Math.sin(x*5+sd)*Math.sin(y*6+sd*2)*Math.sin(z*4+sd*3));pp.setXYZ(j,x*d,y*d,z*d)}
+  gm.computeVertexNormals();const mt=new THREE.MeshStandardMaterial({color:hx(mr()*.15,.15+mr()*.2,.35+mr()*.3),roughness:1,flatShading:true}),me=new THREE.Mesh(gm,mt);me.scale.setScalar(s);tilt.add(me);
+  dist+=Rd*(.5+mr()*.9)+s*2;moons.push({mesh:me,d:dist,a:mr()*6.28,sp:.25/Math.sqrt(dist/Rd),inc:(mr()-.5)*.25})}
+ tgtD=Math.max(Rd*3.2,dist*1.6,outer*2.6);if(!moons.length)tgtD=Math.max(Rd*3.2,outer*2.6);
+ $('nm').textContent=nm(seed);$('sub').textContent=TN[P.t]+(P.ring?' · ringed':'')+(P.moons?` · ${P.moons} moon${P.moons>1?'s':''}`:'');
+ const M=g*size*size,rho=M/Math.pow(size,3)*5.51,ve=11.19*Math.sqrt(M/size);
+ $('sv').textContent=size.toFixed(2)+' R⊕';$('gv').textContent=g.toFixed(2)+' g';
+ const rows=[['Radius',(size*6371).toLocaleString('en',{maximumFractionDigits:0})+' km'],['Mass',M.toFixed(2)+' M⊕'],['Density',rho.toFixed(2)+' g/cm³'],['Escape velocity',ve.toFixed(1)+' km/s'],['Day length',P.day.toFixed(1)+' h'],['Mean temp',Math.round(P.temp)+' K'],['Atmosphere','×'+(g*P.atmK).toFixed(2)+' density'],['Terrain relief','×'+pU.uRel.value.toFixed(2)],['Rings',P.ring?CN[P.comp]:'none']];
+ $('st').innerHTML=rows.map(r=>`<span>${r[0]}</span><b>${r[1]}</b>`).join('')}
+
+/* ---------- UI ---------- */
+['seed','type','size','grav','rings','comp'].forEach(i=>$(i).addEventListener('input',build));
+$('rn').onclick=()=>{$('seed').value=Math.random()*1e9|0;build()};
+$('pv').onclick=()=>{$('seed').value=Math.max(0,+$('seed').value-1);build()};
+$('nx').onclick=()=>{$('seed').value=+$('seed').value+1;build()};
+const pts=new Map();let pd=0;const cv=ren.domElement;
+cv.addEventListener('pointerdown',e=>{cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,e);pd=0});
+cv.addEventListener('pointerup',e=>pts.delete(e.pointerId));
+cv.addEventListener('pointermove',e=>{const p=pts.get(e.pointerId);if(!p)return;
+ if(pts.size==2){const o=[...pts.values()].find(q=>q.pointerId!=e.pointerId),d0=Math.hypot(p.clientX-o.clientX,p.clientY-o.clientY),d1=Math.hypot(e.clientX-o.clientX,e.clientY-o.clientY);zoom=Math.min(2,Math.max(.25,zoom*d0/d1))}
+ else{th-=(e.clientX-p.clientX)*.006;ph=Math.min(3,Math.max(.15,ph-(e.clientY-p.clientY)*.006))}
+ pts.set(e.pointerId,e)});
+cv.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.min(2,Math.max(.25,zoom*Math.exp(e.deltaY*.001)))},{passive:false});
+function rs(){ren.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix()}
+addEventListener('resize',rs);rs();
+const clk=new THREE.Clock();
+(function loop(){requestAnimationFrame(loop);const dt=Math.min(clk.getDelta(),.1),t=clk.elapsedTime;
+ if($('rot').checked&&P0){planet.rotation.y+=dt*.12*(24/P0.day);cloud.rotation.y+=dt*.15*(24/P0.day)}
+ moons.forEach(m=>{m.a+=dt*m.sp;m.mesh.position.set(Math.cos(m.a)*m.d,Math.sin(m.a)*m.d*m.inc,Math.sin(m.a)*m.d);m.mesh.rotation.y+=dt*.2});
+ pU.uTime.value=cU.uTime.value=t;
+ scene.updateMatrixWorld();pU.uM.value.setFromMatrix4(planet.matrixWorld);cU.uM.value.setFromMatrix4(cloud.matrixWorld);
+ camD+=(tgtD*zoom-camD)*Math.min(1,dt*5);
+ cam.position.set(camD*Math.sin(ph)*Math.cos(th),camD*Math.cos(ph),camD*Math.sin(ph)*Math.sin(th));cam.lookAt(0,0,0);
+ ren.render(scene,cam)})();
+build();
+</script></body></html>
