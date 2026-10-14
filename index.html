@@ -1,1239 +1,546 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#05060a" />
-<meta name="description" content="The Cosmic Forge — a procedural planet synthesizer rendered entirely with GLSL shaders." />
-<title>The Cosmic Forge</title>
-<style>
-  :root {
-    --bg: #05060a;
-    --ink: #e8e6e1;
-    --muted: #8b8f9c;
-    --accent: #ffb547;
-    --line: rgba(255, 255, 255, 0.08);
-    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; height: 100%; overflow: hidden;
-    background: var(--bg); color: var(--ink);
-    font-family: var(--mono);
-    -webkit-font-smoothing: antialiased;
-  }
-  canvas#forge { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Puter Chat</title>
+  <script src="https://js.puter.com/v2/"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  #hud {
-    position: fixed; top: 16px; left: 16px; z-index: 5;
-    max-width: min(320px, calc(100vw - 32px));
-    padding: 14px 16px;
-    background: rgba(8, 10, 16, 0.62);
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    pointer-events: none;
-  }
-  #hud h1 {
-    margin: 0; font-size: 15px; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 600;
-  }
-  #hud h1 span { color: var(--accent); }
-  #hud .sub { margin: 4px 0 12px; font-size: 11px; color: var(--muted); }
-  #hud dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; font-size: 11.5px; }
-  #hud dt { color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; align-self: center; }
-  #hud dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-  #hud .bar { height: 2px; background: var(--line); margin: 12px 0 0; border-radius: 2px; overflow: hidden; }
-  #hud .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #6aa7ff, #ffb547, #ff4d2e); transition: width .3s; }
+    :root {
+      --bg: #000;
+      --bubble-user: #0b84ff;
+      --bubble-ai: #2c2c2e;
+      --text-secondary: #8e8e93;
+      --divider: #3a3a3c;
+      --accent: #0b84ff;
+      --radius: 18px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
 
-  #hint {
-    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
-    font-size: 11px; color: var(--muted); letter-spacing: 0.08em; z-index: 5;
-    pointer-events: none; white-space: nowrap;
-  }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: #fff;
+      font-family: var(--font);
+      -webkit-font-smoothing: antialiased;
+      overflow: hidden;
+    }
 
-  #loader {
-    position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
-    background: var(--bg); transition: opacity .6s ease;
-    font-size: 12px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted);
-  }
-  #loader.done { opacity: 0; pointer-events: none; }
-  #loader .pulse { width: 46px; height: 46px; margin: 0 auto 18px; border-radius: 50%;
-    border: 1px solid var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-  @keyframes pulse { 0%,100% { transform: scale(.7); opacity: .4 } 50% { transform: scale(1); opacity: 1 } }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      max-width: 720px;
+      margin: 0 auto;
+    }
 
-  .lil-gui.root {
-    --background-color: rgba(10, 12, 20, 0.88);
-    --title-background-color: rgba(255, 181, 71, 0.08);
-    --widget-color: #1b1f2c;
-    --hover-color: #262b3b;
-    --focus-color: #30364a;
-    --number-color: #ffb547;
-    --string-color: #9fd3a8;
-    --font-family: var(--mono);
-    --font-size: 11px;
-    position: fixed; top: 16px; right: 16px; z-index: 6;
-    max-height: calc(100vh - 32px); overflow-y: auto;
-    border: 1px solid var(--line); border-radius: 10px;
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  }
-  @media (max-width: 720px) {
-    #hud { top: 10px; left: 10px; padding: 10px 12px; }
-    #hud dl { font-size: 10.5px; }
-    #hint { display: none; }
-    .lil-gui.root { top: auto; bottom: 10px; right: 10px; left: 10px; width: auto !important; max-height: 52vh; }
-  }
-</style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
-    "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.esm.min.js"
-  }
-}
-</script>
+    /* ---------- HEADER ---------- */
+    header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--divider);
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #30d158;
+      flex-shrink: 0;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+      white-space: nowrap;
+    }
+
+    #model-select {
+      margin-left: auto;
+      background: #1c1c1e;
+      color: #fff;
+      border: 1px solid var(--divider);
+      border-radius: 10px;
+      padding: 6px 10px;
+      font-size: 12.5px;
+      font-family: var(--font);
+      outline: none;
+      cursor: pointer;
+      max-width: 190px;
+      transition: border-color 0.2s;
+    }
+    #model-select:hover, #model-select:focus { border-color: var(--accent); }
+
+    /* ---------- MESSAGES ---------- */
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 12px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      scroll-behavior: smooth;
+    }
+    #messages::-webkit-scrollbar { width: 6px; }
+    #messages::-webkit-scrollbar-thumb { background: #3a3a3c; border-radius: 3px; }
+
+    .msg-row { display: flex; width: 100%; }
+    .msg-row.user { justify-content: flex-end; }
+    .msg-row.ai { justify-content: flex-start; }
+
+    .bubble {
+      max-width: 78%;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      font-size: 15.5px;
+      line-height: 1.45;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      position: relative;
+      animation: pop 0.18s ease-out;
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: scale(0.96) translateY(4px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .msg-row.user .bubble {
+      background: var(--bubble-user);
+      color: #fff;
+      border-bottom-right-radius: 6px;
+    }
+
+    .msg-row.ai .bubble {
+      background: var(--bubble-ai);
+      color: #e5e5ea;
+      border-bottom-left-radius: 6px;
+      margin-left: 30px;
+    }
+
+    .msg-row.ai .bubble::before {
+      content: "✦";
+      position: absolute;
+      left: -30px;
+      bottom: 2px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #0b84ff, #30d158);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #fff;
+    }
+
+    .model-tag {
+      display: block;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      opacity: 0.75;
+    }
+
+    /* ---------- TYPING ---------- */
+    .typing { display: flex; align-items: center; gap: 5px; padding: 3px 2px; }
+    .typing span {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      animation: bounce 1.2s infinite ease-in-out;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.15s; }
+    .typing span:nth-child(3) { animation-delay: 0.3s; }
+
+    @keyframes bounce {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+      40%           { transform: translateY(-5px); opacity: 1; }
+    }
+
+    /* ---------- SYSTEM NOTE ---------- */
+    .system-note {
+      align-self: center;
+      text-align: center;
+      font-size: 11.5px;
+      color: var(--text-secondary);
+      background: #1c1c1e;
+      border: 1px solid var(--divider);
+      padding: 6px 12px;
+      border-radius: 12px;
+      max-width: 85%;
+      animation: pop 0.18s ease-out;
+    }
+
+    /* ---------- INPUT BAR ---------- */
+    #input-bar {
+      flex-shrink: 0;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--divider);
+      background: rgba(0, 0, 0, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      position: sticky;
+      bottom: 0;
+      z-index: 10;
+    }
+
+    #user-input {
+      flex: 1;
+      resize: none;
+      background: #1c1c1e;
+      border: 1px solid var(--divider);
+      border-radius: 20px;
+      padding: 10px 16px;
+      font-size: 15.5px;
+      font-family: var(--font);
+      color: #fff;
+      outline: none;
+      max-height: 120px;
+      min-height: 42px;
+      line-height: 1.4;
+      transition: border-color 0.2s;
+    }
+    #user-input::placeholder { color: #636366; }
+    #user-input:focus { border-color: var(--accent); }
+
+    #send-btn {
+      flex-shrink: 0;
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.12s, opacity 0.2s;
+    }
+    #send-btn:hover:not(:disabled)  { transform: scale(1.06); }
+    #send-btn:active:not(:disabled) { transform: scale(0.94); }
+    #send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    #send-btn svg { width: 18px; height: 18px; fill: #fff; margin-left: 1px; }
+
+    .powered {
+      flex-shrink: 0;
+      text-align: center;
+      padding: 6px 0 10px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      background: var(--bg);
+    }
+    .powered a { color: var(--accent); text-decoration: none; }
+    .powered a:hover { text-decoration: underline; }
+
+    .error-bubble {
+      background: #3a1c1c !important;
+      color: #ff8a8a !important;
+      border: 1px solid #5c2626;
+    }
+
+    @media (max-width: 500px) {
+      .bubble { max-width: 85%; font-size: 15px; }
+      #model-select { max-width: 130px; font-size: 11.5px; }
+      header h1 { display: none; }
+    }
+  </style>
 </head>
 <body>
-<div id="loader" role="status" aria-live="polite"><div><div class="pulse"></div>Igniting the forge</div></div>
-
-<header id="hud" aria-live="polite">
-  <h1>The Cosmic <span>Forge</span></h1>
-  <p class="sub">Procedural world synthesis · seed <span id="hud-seed">—</span></p>
-  <dl>
-    <dt>Era</dt><dd id="hud-era">—</dd>
-    <dt>Climate</dt><dd id="hud-climate">—</dd>
-    <dt>Body</dt><dd id="hud-body">—</dd>
-    <dt>Oceans</dt><dd id="hud-water">—</dd>
-    <dt>Atmosphere</dt><dd id="hud-atm">—</dd>
-    <dt>Spin</dt><dd id="hud-spin">—</dd>
-    <dt>Debris</dt><dd id="hud-debris">—</dd>
-  </dl>
-  <div class="bar" aria-hidden="true"><i id="hud-temp-bar"></i></div>
-</header>
-<p id="hint">Drag to orbit · Scroll / pinch to zoom · Right-drag to pan</p>
-
-<canvas id="forge" aria-label="Procedurally generated planet rendered in real time"></canvas>
-
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import GUI from 'lil-gui';
-
-/* =========================================================================
-   SEED ENGINE
-   ========================================================================= */
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6D2B79F5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-const lerp = (a, b, t) => a + (b - a) * t;
-const smoothstep = (e0, e1, x) => { const t = clamp01((x - e0) / (e1 - e0)); return t * t * (3 - 2 * t); };
-const lerp3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-
-/* =========================================================================
-   GLSL LIBRARY — every noise call routes through the seeded wrappers
-   ========================================================================= */
-const GLSL_NOISE = /* glsl */`
-uniform vec3 u_seed;
-uniform float u_time;
-
-vec3 mod289(vec3 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
-vec4 mod289(vec4 x){ return x - floor(x * (1.0/289.0)) * 289.0; }
-vec4 permute(vec4 x){ return mod289(((x * 34.0) + 1.0) * x); }
-vec4 taylorInvSqrt(vec4 r){ return 1.79284291400159 - 0.85373472095314 * r; }
-
-float snoise(vec3 v){
-  const vec2 C = vec2(1.0/6.0, 1.0/3.0);
-  const vec4 D = vec4(0.0, 0.5, 1.0, 2.0);
-  vec3 i  = floor(v + dot(v, C.yyy));
-  vec3 x0 = v - i + dot(i, C.xxx);
-  vec3 g = step(x0.yzx, x0.xyz);
-  vec3 l = 1.0 - g;
-  vec3 i1 = min(g.xyz, l.zxy);
-  vec3 i2 = max(g.xyz, l.zxy);
-  vec3 x1 = x0 - i1 + C.xxx;
-  vec3 x2 = x0 - i2 + C.yyy;
-  vec3 x3 = x0 - D.yyy;
-  i = mod289(i);
-  vec4 p = permute(permute(permute(
-            i.z + vec4(0.0, i1.z, i2.z, 1.0))
-          + i.y + vec4(0.0, i1.y, i2.y, 1.0))
-          + i.x + vec4(0.0, i1.x, i2.x, 1.0));
-  float n_ = 0.142857142857;
-  vec3 ns = n_ * D.wyz - D.xzx;
-  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);
-  vec4 x_ = floor(j * ns.z);
-  vec4 y_ = floor(j - 7.0 * x_);
-  vec4 x = x_ * ns.x + ns.yyyy;
-  vec4 y = y_ * ns.x + ns.yyyy;
-  vec4 h = 1.0 - abs(x) - abs(y);
-  vec4 b0 = vec4(x.xy, y.xy);
-  vec4 b1 = vec4(x.zw, y.zw);
-  vec4 s0 = floor(b0) * 2.0 + 1.0;
-  vec4 s1 = floor(b1) * 2.0 + 1.0;
-  vec4 sh = -step(h, vec4(0.0));
-  vec4 a0 = b0.xzyw + s0.xzyw * sh.xxyy;
-  vec4 a1 = b1.xzyw + s1.xzyw * sh.zzww;
-  vec3 p0 = vec3(a0.xy, h.x);
-  vec3 p1 = vec3(a0.zw, h.y);
-  vec3 p2 = vec3(a1.xy, h.z);
-  vec3 p3 = vec3(a1.zw, h.w);
-  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2,p2), dot(p3,p3)));
-  p0 *= norm.x; p1 *= norm.y; p2 *= norm.z; p3 *= norm.w;
-  vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-  m = m * m;
-  return 42.0 * dot(m * m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
-}
-
-// Seeded wrappers — the single source of randomness on the GPU.
-float sn(vec3 p){ return snoise(p + u_seed); }
-
-vec3 hash33(vec3 p){
-  p = fract((p + u_seed * 0.1234) * vec3(0.1031, 0.1030, 0.0973));
-  p += dot(p, p.yxz + 33.33);
-  return fract((p.xxy + p.yxx) * p.zyx);
-}
-
-float fbm(vec3 p, float gain){
-  float s = 0.0, a = 1.0, nrm = 0.0;
-  for (int i = 0; i < 6; i++){
-    s += a * sn(p); nrm += a; a *= gain;
-    p = p * 2.02 + vec3(1.7, 9.2, 3.4);
-  }
-  return s / nrm;
-}
-
-float fbm3(vec3 p){
-  float s = 0.0, a = 1.0, nrm = 0.0;
-  for (int i = 0; i < 3; i++){
-    s += a * sn(p); nrm += a; a *= 0.5;
-    p = p * 2.03 + vec3(4.1, 1.3, 7.7);
-  }
-  return s / nrm;
-}
-
-float ridged(vec3 p, float gain){
-  float s = 0.0, a = 0.5, prev = 1.0;
-  for (int i = 0; i < 5; i++){
-    float n = 1.0 - abs(sn(p));
-    n *= n;
-    s += n * a * prev;
-    prev = n; a *= gain;
-    p = p * 2.1 + vec3(3.1, 7.4, 1.9);
-  }
-  return s;
-}
-`;
-
-const GLSL_TERRAIN = /* glsl */`
-uniform float u_amp;
-uniform float u_persistence;
-uniform float u_mountain;
-uniform float u_crater;
-uniform float u_seaLevel;
-uniform float u_gas;
-
-// Worley-based impact craters: bowl + raised rim per feature point.
-float craters(vec3 p){
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  float h = 0.0;
-  for (int z = -1; z <= 1; z++)
-  for (int y = -1; y <= 1; y++)
-  for (int x = -1; x <= 1; x++){
-    vec3 g = vec3(float(x), float(y), float(z));
-    vec3 r = hash33(i + g);
-    if (fract(r.z * 13.7) > 0.5) continue;
-    float rad = 0.16 + 0.3 * fract(r.x * 7.31 + r.y * 3.7);
-    float d = length(g + r - f) / rad;
-    if (d > 2.0) continue;
-    float bowl = (d * d - 1.0) * step(d, 1.0);
-    float rim = exp(-pow((d - 1.0) * 4.0, 2.0)) * 0.35;
-    h += (bowl * 0.6 + rim) * rad;
-  }
-  return h;
-}
-
-float terrainHeight(vec3 n){
-  vec3 p = n * 1.7;
-  float warp = sn(p * 0.7 + 11.0);
-  float cont = fbm(p + warp * 0.5, u_persistence) * 1.8;
-  float mnt = ridged(p * 2.3 + 5.0, u_persistence);
-  float mask = smoothstep(-0.05, 0.45, cont);
-  float h = cont * 0.8 + mnt * mask * u_mountain * 0.6 - 0.06 * u_mountain;
-  h += craters(n * 5.0) * u_crater;
-  return h;
-}
-`;
-
-const GLSL_RING = /* glsl */`
-uniform float u_ringInner;
-uniform float u_ringOuter;
-uniform float u_ringDensity;
-
-// Radial optical depth with noise-cut gaps (never a solid disc).
-float ringProfile(float r){
-  float x = (r - u_ringInner) / (u_ringOuter - u_ringInner);
-  if (x < 0.0 || x > 1.0) return 0.0;
-  float edge = smoothstep(0.0, 0.05, x) * smoothstep(1.0, 0.88, x);
-  float bands = sn(vec3(x * 9.0, 1.3, 0.0)) * 0.5
-              + sn(vec3(x * 37.0, 4.1, 0.0)) * 0.32
-              + sn(vec3(x * 140.0, 7.7, 0.0)) * 0.18;
-  float thr = mix(0.5, -0.55, u_ringDensity);
-  float a = smoothstep(thr, thr + 0.16, bands);
-  float gapPos = 0.55 + 0.18 * sn(vec3(0.0, 9.0, 2.0));
-  a *= smoothstep(0.012, 0.03, abs(x - gapPos));
-  float gap2 = 0.2 + 0.1 * sn(vec3(3.0, 1.0, 5.0));
-  a *= smoothstep(0.004, 0.012, abs(x - gap2));
-  float fine = 0.8 + 0.2 * sn(vec3(x * 210.0, 2.0, 0.0));
-  return clamp(a * edge * fine, 0.0, 1.0);
-}
-`;
-
-/* -------------------------------------------------------------------------
-   PLANET SHADERS
-   ------------------------------------------------------------------------- */
-const planetVertex = /* glsl */`
-${GLSL_NOISE}
-${GLSL_TERRAIN}
-varying vec3 vDir;
-varying vec3 vWorldPos;
-
-void main(){
-  vec3 n = normalize(position);
-  float rockW = 1.0 - smoothstep(0.25, 0.9, u_gas);
-  float surf = 0.0;
-  if (rockW > 0.001){
-    float h = terrainHeight(n);
-    surf = max(h, u_seaLevel) * u_amp * rockW;
-  }
-  // Gas giants bulge slightly at the equator from fast rotation.
-  vec3 displaced = n * (1.0 + surf);
-  displaced.y *= 1.0 - 0.04 * smoothstep(0.5, 1.0, u_gas);
-  vDir = n;
-  vec4 wp = modelMatrix * vec4(displaced, 1.0);
-  vWorldPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-
-const planetFragment = /* glsl */`
-${GLSL_NOISE}
-${GLSL_TERRAIN}
-${GLSL_RING}
-uniform float u_baseSea;
-uniform float u_iceLat;
-uniform float u_freeze;
-uniform float u_snowLine;
-uniform float u_scorch;
-uniform float u_cold;
-uniform float u_lava;
-uniform float u_inferno;
-uniform float u_clouds;
-uniform float u_haze;
-uniform float u_atmDensity;
-uniform float u_hasRings;
-uniform vec3 u_c1;
-uniform vec3 u_c2;
-uniform vec3 u_c3;
-uniform vec3 u_atmColor;
-uniform vec3 u_sunDir;
-uniform vec3 u_ringNormal;
-uniform mat3 u_planetRot;
-
-varying vec3 vDir;
-varying vec3 vWorldPos;
-
-const float SUN = 1.6;
-
-vec3 terrainNormal(vec3 n, float h0, float amp){
-  vec3 up = abs(n.y) > 0.99 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-  vec3 t1 = normalize(cross(up, n));
-  vec3 t2 = cross(n, t1);
-  float e = 0.0025;
-  vec3 n1 = normalize(n + t1 * e);
-  vec3 n2 = normalize(n + t2 * e);
-  float h1 = max(terrainHeight(n1), u_seaLevel);
-  float h2 = max(terrainHeight(n2), u_seaLevel);
-  vec3 p0 = n  * (1.0 + amp * max(h0, u_seaLevel));
-  vec3 p1 = n1 * (1.0 + amp * h1);
-  vec3 p2 = n2 * (1.0 + amp * h2);
-  vec3 N = normalize(cross(p1 - p0, p2 - p0));
-  return dot(N, n) < 0.0 ? -N : N;
-}
-
-vec3 lavaColor(float x){
-  vec3 c = mix(vec3(0.45, 0.02, 0.0), vec3(1.0, 0.32, 0.02), smoothstep(0.0, 0.5, x));
-  return mix(c, vec3(1.0, 0.85, 0.35), smoothstep(0.5, 1.0, x));
-}
-
-float ringShadow(vec3 wp, vec3 L){
-  if (u_hasRings < 0.5) return 1.0;
-  float denom = dot(L, u_ringNormal);
-  if (abs(denom) < 1e-4) return 1.0;
-  float t = -dot(wp, u_ringNormal) / denom;
-  if (t <= 0.0) return 1.0;
-  vec3 hit = wp + L * t;
-  return 1.0 - ringProfile(length(hit)) * 0.75;
-}
-
-vec3 gasColor(vec3 n, out float glow){
-  float lat = n.y;
-  // Zonal jets: latitude-dependent differential rotation shears the bands.
-  float jet = sin(lat * 9.0 + sn(vec3(lat * 3.0, 0.0, 1.0)) * 1.5);
-  float ang = u_time * 0.035 * jet;
-  float c = cos(ang), s = sin(ang);
-  vec3 p = n;
-  p.xz = mat2(c, -s, s, c) * p.xz;
-  p *= vec3(1.1, 2.6, 1.1);
-
-  float f, detail, storm;
-  if (u_gas > 0.8){
-    // Domain warping (fbm of fbm of fbm) — churning storm fluid.
-    float tt = u_time * 0.06;
-    vec3 pw = p * 0.55;
-    vec3 q = vec3(fbm3(pw + vec3(0.0, 0.0, tt)),
-                  fbm3(pw + vec3(5.2, 1.3, -tt)),
-                  fbm3(pw + vec3(2.7, 8.1, tt * 0.7)));
-    vec3 r = vec3(fbm3(pw + 1.7 * q + vec3(1.7, 9.2, tt * 1.4)),
-                  fbm3(pw + 1.7 * q + vec3(8.3, 2.8, -tt * 1.1)),
-                  fbm3(pw + 1.7 * q + vec3(4.4, 6.1, tt)));
-    f = fbm3(p * 0.8 + 1.5 * r);
-    detail = length(q);
-    storm = smoothstep(0.2, 0.55, length(r));
-  } else {
-    f = fbm3(p * vec3(1.0, 3.0, 1.0) + vec3(u_time * 0.02, 0.0, 0.0));
-    detail = 0.45;
-    storm = 0.0;
-  }
-
-  float warpAmt = u_gas > 0.8 ? 1.5 : 0.6;
-  float bandCoord = lat * 4.2 + f * warpAmt;
-  float b  = 0.5 + 0.5 * sin(bandCoord * 3.14159);
-  float b2 = 0.5 + 0.5 * sin(bandCoord * 7.3 + 1.0);
-  vec3 col = mix(u_c1, u_c2, b);
-  col = mix(col, u_c3, b2 * 0.4 + storm * 0.45);
-  col *= 0.8 + 0.4 * detail;
-
-  // Great persistent vortex at a seeded longitude.
-  float lon = hash33(vec3(3.0, 7.0, 1.0)).x * 6.2831;
-  vec3 sc = normalize(vec3(cos(lon) * 0.94, -0.33, sin(lon) * 0.94));
-  vec3 e = n - sc;
-  float d = length(e * vec3(0.55, 1.5, 0.55));
-  float spot = smoothstep(0.2, 0.04, d + f * 0.05);
-  col = mix(col, u_c3 * vec3(1.15, 0.55, 0.38) + vec3(0.08, 0.0, 0.0), spot * 0.85 * smoothstep(0.4, 0.9, u_gas));
-
-  // Thermal tinting.
-  col = mix(col, col * vec3(1.3, 0.68, 0.42) + vec3(0.12, 0.02, 0.0), u_scorch * 0.8);
-  col = mix(col, vec3(dot(col, vec3(0.333))) * vec3(0.72, 0.9, 1.15), u_cold * 0.6);
-
-  glow = u_inferno * (0.6 + 0.8 * b2 + storm);
-  return col;
-}
-
-void main(){
-  vec3 n = normalize(vDir);
-  vec3 nW = normalize(u_planetRot * n);
-  vec3 L = normalize(u_sunDir);
-  vec3 V = normalize(cameraPosition - vWorldPos);
-  vec3 H = normalize(L + V);
-  float sunDot = dot(nW, L);
-  float sunSide = smoothstep(-0.12, 0.3, sunDot);
-  float shadow = ringShadow(vWorldPos, L);
-
-  float rockW = 1.0 - smoothstep(0.25, 0.9, u_gas);
-  float gasW = 1.0 - rockW;
-
-  vec3 rockLit = vec3(0.0);
-  vec3 emissive = vec3(0.0);
-
-  if (rockW > 0.001){
-    float h = terrainHeight(n);
-    float above = h - u_seaLevel;
-    bool isOcean = above < 0.0;
-    vec3 N = isOcean ? n : terrainNormal(n, h, u_amp * rockW * 2.6);
-    float slope = 1.0 - clamp(dot(N, n), 0.0, 1.0);
-
-    // ---- Land gradient map ----
-    float tt = clamp(above / 1.1 + sn(n * 2.5 + 3.3) * 0.12, 0.0, 1.0);
-    vec3 land = mix(mix(u_c1, u_c2, smoothstep(0.05, 0.45, tt)), u_c3, smoothstep(0.5, 1.0, tt));
-    land *= 0.88 + 0.24 * (sn(n * 55.0) * 0.5 + 0.5);
-    land = mix(land, mix(u_c2, u_c3, 0.3) * 0.6, smoothstep(0.05, 0.2, slope) * 0.45);
-
-    float hasSea = step(-4.0, u_seaLevel);
-    land = mix(vec3(0.78, 0.71, 0.52), land, mix(1.0, smoothstep(0.0, 0.035, above), hasSea * (1.0 - u_scorch) * (1.0 - u_freeze)));
-
-    // Dried basins (salt flats) where the sea has retreated.
-    float salt = smoothstep(u_baseSea, u_baseSea - 0.2, h) * step(0.0, above);
-    land = mix(land, vec3(0.74, 0.68, 0.58), salt * 0.7);
-
-    land = mix(land, vec3(0.5, 0.55, 0.56), u_cold * 0.45);
-
-    vec3 scorchCol = mix(vec3(0.32, 0.06, 0.02), vec3(0.88, 0.4, 0.1), smoothstep(0.0, 0.6, tt + sn(n * 8.0) * 0.15));
-    scorchCol = mix(scorchCol, vec3(0.16, 0.08, 0.06), smoothstep(0.6, 1.0, tt));
-    land = mix(land, scorchCol, u_scorch);
-    land = mix(land, vec3(0.06, 0.05, 0.05), u_lava * 0.75);
-
-    // ---- Ocean ----
-    float depth = -above;
-    vec3 ocean = mix(vec3(0.03, 0.2, 0.3), vec3(0.005, 0.025, 0.09), smoothstep(0.0, 0.12, depth));
-    vec3 iceSheet = vec3(0.78, 0.87, 0.95) - vec3(0.2, 0.12, 0.05) * smoothstep(0.0, 0.5, depth) + sn(n * 22.0) * 0.05;
-    ocean = mix(ocean, iceSheet, u_freeze);
-    vec3 wave = vec3(sn(n * 90.0 + u_time * 0.25), sn(n * 90.0 + 7.0 - u_time * 0.25), sn(n * 90.0 + 13.0 + u_time * 0.2)) * 0.07 * (1.0 - u_freeze);
-    vec3 Nocean = normalize(n + wave - n * dot(wave, n));
-
-    // ---- Ice caps & peak snow ----
-    float lat = abs(n.y);
-    float iceN = sn(n * 7.0 + 2.0) * 0.07;
-    float polar = smoothstep(u_iceLat - 0.03, u_iceLat + 0.03, lat + iceN + max(above, 0.0) * 0.3);
-    float peak = smoothstep(u_snowLine, u_snowLine + 0.1, above + iceN) * (1.0 - smoothstep(0.1, 0.3, slope));
-    float ice = max(polar, peak) * (1.0 - u_scorch) * (1.0 - u_lava * 0.8);
-
-    vec3 albedo = isOcean ? ocean : land;
-    float rough = isOcean ? mix(0.06, 0.88, u_freeze) : 0.92;
-    vec3 Nf = isOcean ? Nocean : N;
-    albedo = mix(albedo, vec3(0.9, 0.94, 0.98), ice);
-    rough = mix(rough, 0.5, ice);
-    if (isOcean) Nf = normalize(mix(Nf, n, ice));
-
-    vec3 Nw = normalize(u_planetRot * Nf);
-    float diff = max(dot(Nw, L), 0.0) * smoothstep(-0.08, 0.12, sunDot) * shadow;
-    float shin = mix(700.0, 14.0, rough);
-    float specS = mix(1.6, 0.03, rough);
-    float fres = 0.04 + 0.96 * pow(1.0 - max(dot(Nw, V), 0.0), 5.0);
-    float spec = pow(max(dot(Nw, H), 0.0), shin) * specS * (0.6 + fres) * sunSide * shadow;
-    vec3 sunCol = vec3(1.0, 0.96, 0.9) * SUN;
-    rockLit = albedo * (diff * sunCol + 0.015 + u_atmColor * 0.03 * u_atmDensity) + sunCol * spec * mix(vec3(1.0), u_atmColor, 0.2);
-
-    // ---- Clouds ----
-    if (u_clouds > 0.01){
-      float ca = u_time * 0.012;
-      vec3 cp = n;
-      cp.xz = mat2(cos(ca), -sin(ca), sin(ca), cos(ca)) * cp.xz;
-      cp *= 2.6;
-      float cn = fbm(cp + sn(cp * 0.6) * 0.7, 0.5);
-      float thr = mix(0.55, 0.1, u_clouds);
-      float cv = smoothstep(thr, thr + 0.25, cn) * clamp(u_clouds * 1.4, 0.0, 0.85);
-      vec3 cloudCol = mix(vec3(0.92), u_atmColor, 0.15) * (smoothstep(-0.1, 0.5, sunDot) * SUN * 0.5 * shadow + 0.012);
-      rockLit = mix(rockLit, cloudCol, cv * 0.9);
-    }
-
-    // ---- Lava veins (young worlds) & inferno glow ----
-    if (u_lava + u_inferno > 0.001){
-      vec3 lp = n * 5.0;
-      float flow = u_time * 0.05;
-      float w = sn(lp * 0.5 + flow);
-      float cr  = 1.0 - abs(sn(lp + vec3(w * 1.5, flow, -flow)));
-      float cr2 = 1.0 - abs(sn(lp * 2.3 + 11.0 + w));
-      float veins = pow(cr, 16.0) + pow(cr2, 22.0) * 0.6;
-      float lowMask = 1.0 - smoothstep(-0.2, 0.55, above);
-      float pulse = 0.72 + 0.28 * sin(u_time * 1.6 + sn(lp * 0.3) * 6.0);
-      float lavaI = u_lava * veins * (0.35 + 0.65 * lowMask) * pulse;
-      float heat = u_inferno * (0.25 + 0.75 * lowMask + veins * 2.5) * pulse;
-      emissive += lavaColor(clamp(veins * 1.1 + lowMask * 0.2, 0.0, 1.0)) * (lavaI * 3.0 + heat * 0.7) * rockW;
-    }
-  }
-
-  vec3 gasLit = vec3(0.0);
-  if (gasW > 0.001){
-    float glow;
-    vec3 g = gasColor(n, glow);
-    float diff = smoothstep(-0.15, 1.0, sunDot) * shadow;
-    float limb = pow(max(dot(nW, V), 0.0), 0.35);
-    gasLit = g * (diff * SUN * 0.9 + 0.012) * limb;
-    emissive += g * vec3(1.0, 0.55, 0.3) * glow * 0.8 * gasW;
-  }
-
-  vec3 col = mix(rockLit, gasLit, gasW);
-
-  // Atmospheric haze & limb scattering.
-  vec3 hazeCol = u_atmColor * (0.03 + 1.25 * smoothstep(-0.2, 0.6, sunDot));
-  col = mix(col, hazeCol, u_haze);
-  float fresA = pow(1.0 - max(dot(nW, V), 0.0), 2.6);
-  vec3 twilight = mix(vec3(1.0, 0.45, 0.2), vec3(1.0), smoothstep(0.0, 0.35, sunDot));
-  col += u_atmColor * twilight * fresA * u_atmDensity * smoothstep(-0.3, 0.5, sunDot) * 0.45;
-
-  col += emissive * (1.0 - 0.5 * u_haze);
-  gl_FragColor = vec4(col, 1.0);
-}
-`;
-
-/* -------------------------------------------------------------------------
-   ATMOSPHERE SHELL
-   ------------------------------------------------------------------------- */
-const atmosphereVertex = /* glsl */`
-varying vec3 vWorldNormal;
-varying vec3 vWorldPos;
-void main(){
-  vWorldNormal = normalize(mat3(modelMatrix) * normal);
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-const atmosphereFragment = /* glsl */`
-uniform vec3 u_atmColor;
-uniform float u_atmDensity;
-uniform vec3 u_sunDir;
-varying vec3 vWorldNormal;
-varying vec3 vWorldPos;
-void main(){
-  vec3 V = normalize(cameraPosition - vWorldPos);
-  vec3 N = normalize(vWorldNormal);
-  float rim = clamp(-dot(N, V), 0.0, 1.0);
-  float intensity = pow(smoothstep(0.0, 0.5, rim), 1.8);
-  float sunDot = dot(normalize(vWorldPos), normalize(u_sunDir));
-  float lit = smoothstep(-0.35, 0.6, sunDot);
-  vec3 twilight = mix(vec3(1.0, 0.42, 0.18), vec3(1.0), smoothstep(-0.05, 0.4, sunDot));
-  vec3 col = u_atmColor * twilight * intensity * lit * u_atmDensity * 0.85;
-  gl_FragColor = vec4(col, 1.0);
-}
-`;
-
-/* -------------------------------------------------------------------------
-   RINGS
-   ------------------------------------------------------------------------- */
-const ringVertex = /* glsl */`
-varying vec3 vLocal;
-varying vec3 vWorldPos;
-void main(){
-  vLocal = position;
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vWorldPos = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}
-`;
-const ringFragment = /* glsl */`
-${GLSL_NOISE}
-${GLSL_RING}
-uniform float u_ringComp;
-uniform vec3 u_sunDir;
-uniform vec3 u_ringNormal;
-varying vec3 vLocal;
-varying vec3 vWorldPos;
-
-float planetShadow(vec3 p, vec3 L){
-  float b = dot(p, L);
-  if (b > 0.0) return 1.0;
-  float d = length(p - L * b);
-  return smoothstep(0.96, 1.05, d);
-}
-
-void main(){
-  float r = length(vLocal.xy);
-  float dens = ringProfile(r);
-  if (dens < 0.005) discard;
-
-  // Keplerian shear: inner ringlets orbit faster.
-  float w = 0.18 / pow(r, 1.5);
-  float a = u_time * w;
-  vec2 q = mat2(cos(a), -sin(a), sin(a), cos(a)) * vLocal.xy;
-  float clump = sn(vec3(q * 6.0, r * 20.0));
-  float shimmer = sn(vec3(q * 38.0, u_time * 0.9));
-  dens *= 0.8 + 0.25 * clump;
-
-  float c = u_ringComp;
-  float wIce = 1.0 - smoothstep(0.0, 0.5, c);
-  float wPlasma = smoothstep(0.5, 1.0, c);
-  float wRock = max(0.0, 1.0 - wIce - wPlasma);
-
-  vec3 L = normalize(u_sunDir);
-  vec3 V = normalize(cameraPosition - vWorldPos);
-  vec3 Nr = u_ringNormal * sign(dot(u_ringNormal, V));
-  float NdL = abs(dot(u_ringNormal, L));
-  float forward = pow(max(dot(-V, L), 0.0), 6.0);
-  float shadow = planetShadow(vWorldPos, L);
-  float diff = (0.2 + 0.8 * NdL + forward * 0.8) * shadow * 1.25;
-
-  vec3 iceC = vec3(0.86, 0.9, 0.97);
-  vec3 H = normalize(L + V);
-  float spec = pow(max(dot(Nr, H), 0.0), 70.0) * (0.6 + 0.4 * shimmer) * shadow;
-  float sparkle = pow(max(shimmer, 0.0), 10.0) * 2.0 * shadow;
-  vec3 ice = iceC * diff * 0.85 + vec3(1.0) * (spec * 1.6 + sparkle);
-
-  vec3 rockC = mix(vec3(0.36, 0.25, 0.17), vec3(0.52, 0.4, 0.28), clump * 0.5 + 0.5);
-  vec3 rock = rockC * diff * 0.75;
-
-  float hue = 0.5 + 0.5 * sn(vec3(r * 6.0, q * 1.5 + u_time * 0.05));
-  vec3 plasmaC = mix(vec3(1.0, 0.18, 0.55), vec3(0.2, 0.75, 1.0), hue);
-  float flowLines = 0.5 + 0.5 * sin(r * 80.0 + u_time * 2.0 + clump * 4.0);
-  vec3 plasma = plasmaC * (1.4 + 1.6 * flowLines + shimmer);
-
-  vec3 col = ice * wIce + rock * wRock + plasma * wPlasma;
-  float alpha = dens * mix(0.92, 0.75, wPlasma);
-  gl_FragColor = vec4(col, alpha);
-}
-`;
-
-/* -------------------------------------------------------------------------
-   SKY (procedural stars + nebula + sun)
-   ------------------------------------------------------------------------- */
-const skyVertex = /* glsl */`
-varying vec3 vDir;
-void main(){
-  vDir = position;
-  vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  gl_Position = p.xyww;
-}
-`;
-const skyFragment = /* glsl */`
-${GLSL_NOISE}
-uniform vec3 u_sunDir;
-varying vec3 vDir;
-
-vec3 starLayer(vec3 d, float scale, float thresh){
-  vec3 p = d * scale;
-  vec3 i = floor(p);
-  vec3 f = fract(p);
-  vec3 h = hash33(i);
-  if (h.x < thresh) return vec3(0.0);
-  vec3 c = 0.25 + 0.5 * hash33(i + 17.0);
-  float dist = length(f - c);
-  float tw = 0.65 + 0.35 * sin(u_time * (0.8 + h.y * 3.0) + h.z * 40.0);
-  float s = smoothstep(0.22 * (0.5 + h.y), 0.0, dist) * tw * (h.x - thresh) / (1.0 - thresh);
-  vec3 tint = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.82, 0.6), h.z);
-  return tint * s * 3.0;
-}
-
-void main(){
-  vec3 d = normalize(vDir);
-  vec3 col = vec3(0.004, 0.005, 0.012);
-  float n1 = fbm3(d * 1.8);
-  float n2 = fbm3(d * 3.4 + 10.0);
-  col += vec3(0.22, 0.06, 0.3) * smoothstep(0.05, 0.6, n1) * 0.18;
-  col += vec3(0.02, 0.12, 0.22) * smoothstep(0.1, 0.65, n2) * 0.2;
-  col += starLayer(d, 90.0, 0.93);
-  col += starLayer(d, 220.0, 0.95) * 0.7;
-  float s = max(dot(d, normalize(u_sunDir)), 0.0);
-  col += vec3(1.0, 0.92, 0.78) * (pow(s, 2500.0) * 40.0 + pow(s, 120.0) * 0.6 + pow(s, 12.0) * 0.04);
-  gl_FragColor = vec4(col, 1.0);
-}
-`;
-
-/* -------------------------------------------------------------------------
-   GRAVITY WELL PARTICLES
-   ------------------------------------------------------------------------- */
-const particleVertex = /* glsl */`
-attribute float aRand;
-attribute float aHeat;
-uniform float u_order;
-uniform float u_time;
-uniform float u_pixelRatio;
-varying vec3 vColor;
-varying float vAlpha;
-void main(){
-  vec4 mv = modelViewMatrix * vec4(position, 1.0);
-  gl_Position = projectionMatrix * mv;
-  float size = mix(3.4, 3.0, u_order) * (0.55 + aRand * 0.9);
-  gl_PointSize = size * u_pixelRatio * (11.0 / -mv.z);
-  vec3 cool = vec3(0.45, 0.65, 1.0) * 1.5;
-  vec3 hot = mix(vec3(1.0, 0.85, 0.6) * 2.4, vec3(1.0, 0.35, 0.08) * 1.6, aHeat);
-  vColor = mix(cool, hot, u_order);
-  vAlpha = (0.55 + 0.45 * sin(u_time * (1.0 + aRand * 3.0) + aRand * 50.0)) * mix(0.55, 0.9, u_order);
-}
-`;
-const particleFragment = /* glsl */`
-varying vec3 vColor;
-varying float vAlpha;
-void main(){
-  float d = length(gl_PointCoord - 0.5);
-  float a = smoothstep(0.5, 0.0, d);
-  gl_FragColor = vec4(vColor * a, a * vAlpha);
-}
-`;
-
-/* =========================================================================
-   SCENE
-   ========================================================================= */
-const canvas = document.getElementById('forge');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-const pixelRatio = Math.min(window.devicePixelRatio, 1.5);
-renderer.setPixelRatio(pixelRatio);
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.05, 2000);
-camera.position.set(0.6, 1.4, 6.2);
-
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.dampingFactor = 0.06;
-controls.minDistance = 1.7;
-controls.maxDistance = 16;
-controls.autoRotateSpeed = 0.35;
-
-const shared = {
-  u_seed: { value: new THREE.Vector3() },
-  u_time: { value: 0 },
-  u_sunDir: { value: new THREE.Vector3(1, 0.3, 0.5).normalize() },
-  u_ringNormal: { value: new THREE.Vector3(0, 1, 0) },
-  u_ringInner: { value: 1.45 },
-  u_ringOuter: { value: 2.75 },
-  u_ringDensity: { value: 0.6 },
-};
-
-const atmColor = new THREE.Color(0.35, 0.6, 1.0);
-const atmDensity = { value: 1 };
-
-const planetUniforms = {
-  ...shared,
-  u_amp: { value: 0.06 },
-  u_persistence: { value: 0.5 },
-  u_mountain: { value: 1 },
-  u_crater: { value: 0.2 },
-  u_seaLevel: { value: 0 },
-  u_baseSea: { value: 0 },
-  u_gas: { value: 0 },
-  u_iceLat: { value: 0.86 },
-  u_freeze: { value: 0 },
-  u_snowLine: { value: 0.55 },
-  u_scorch: { value: 0 },
-  u_cold: { value: 0 },
-  u_lava: { value: 0 },
-  u_inferno: { value: 0 },
-  u_clouds: { value: 0.5 },
-  u_haze: { value: 0 },
-  u_atmDensity: atmDensity,
-  u_hasRings: { value: 1 },
-  u_c1: { value: new THREE.Color() },
-  u_c2: { value: new THREE.Color() },
-  u_c3: { value: new THREE.Color() },
-  u_atmColor: { value: atmColor },
-  u_planetRot: { value: new THREE.Matrix3() },
-};
-
-const system = new THREE.Group();
-scene.add(system);
-
-const planet = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 512, 256),
-  new THREE.ShaderMaterial({ vertexShader: planetVertex, fragmentShader: planetFragment, uniforms: planetUniforms })
-);
-system.add(planet);
-
-const atmosphere = new THREE.Mesh(
-  new THREE.SphereGeometry(1.16, 96, 48),
-  new THREE.ShaderMaterial({
-    vertexShader: atmosphereVertex,
-    fragmentShader: atmosphereFragment,
-    uniforms: { u_atmColor: { value: atmColor }, u_atmDensity: atmDensity, u_sunDir: shared.u_sunDir },
-    side: THREE.BackSide,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  })
-);
-system.add(atmosphere);
-
-const ringUniforms = { ...shared, u_ringComp: { value: 0 } };
-const rings = new THREE.Mesh(
-  new THREE.RingGeometry(shared.u_ringInner.value, shared.u_ringOuter.value, 384, 6),
-  new THREE.ShaderMaterial({
-    vertexShader: ringVertex,
-    fragmentShader: ringFragment,
-    uniforms: ringUniforms,
-    side: THREE.DoubleSide,
-    transparent: true,
-    depthWrite: false,
-  })
-);
-rings.rotation.x = -Math.PI / 2;
-system.add(rings);
-
-const sky = new THREE.Mesh(
-  new THREE.SphereGeometry(900, 64, 32),
-  new THREE.ShaderMaterial({
-    vertexShader: skyVertex,
-    fragmentShader: skyFragment,
-    uniforms: { u_seed: shared.u_seed, u_time: shared.u_time, u_sunDir: shared.u_sunDir },
-    side: THREE.BackSide,
-    depthWrite: false,
-  })
-);
-sky.renderOrder = -1;
-scene.add(sky);
-
-/* ---------- Gravity well (CPU-integrated orbits, GPU-shaded points) ---------- */
-const PARTICLE_COUNT = 2000;
-const pGeo = new THREE.BufferGeometry();
-const pPos = new Float32Array(PARTICLE_COUNT * 3);
-const pRand = new Float32Array(PARTICLE_COUNT);
-const pHeat = new Float32Array(PARTICLE_COUNT);
-const pState = {
-  r0: new Float32Array(PARTICLE_COUNT),
-  theta: new Float32Array(PARTICLE_COUNT),
-  kx: new Float32Array(PARTICLE_COUNT),
-  kz: new Float32Array(PARTICLE_COUNT),
-  tilt: new Float32Array(PARTICLE_COUNT),
-  dir: new Float32Array(PARTICLE_COUNT),
-  yj: new Float32Array(PARTICLE_COUNT),
-  wf: new Float32Array(PARTICLE_COUNT * 3),
-  wp: new Float32Array(PARTICLE_COUNT * 3),
-  order: 0,
-};
-pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3).setUsage(THREE.DynamicDrawUsage));
-pGeo.setAttribute('aRand', new THREE.BufferAttribute(pRand, 1));
-pGeo.setAttribute('aHeat', new THREE.BufferAttribute(pHeat, 1));
-const particleUniforms = {
-  u_order: { value: 0 },
-  u_time: shared.u_time,
-  u_pixelRatio: { value: pixelRatio },
-};
-const particles = new THREE.Points(pGeo, new THREE.ShaderMaterial({
-  vertexShader: particleVertex,
-  fragmentShader: particleFragment,
-  uniforms: particleUniforms,
-  transparent: true,
-  depthWrite: false,
-  blending: THREE.AdditiveBlending,
-}));
-particles.frustumCulled = false;
-system.add(particles);
-
-function initParticles(seed) {
-  const rng = mulberry32(seed ^ 0x9e3779b9);
-  for (let i = 0; i < PARTICLE_COUNT; i++) {
-    pState.r0[i] = 1.8 + 3.0 * Math.pow(rng(), 0.85);
-    pState.theta[i] = rng() * Math.PI * 2;
-    // Random orbit-plane normal on the unit sphere, stored as axis-angle from +Y.
-    const u = rng() * 2 - 1, phi = rng() * Math.PI * 2, s = Math.sqrt(1 - u * u);
-    const ax = s * Math.cos(phi), ay = u, az = s * Math.sin(phi);
-    let kx = az, kz = -ax;
-    const kl = Math.hypot(kx, kz);
-    if (kl < 1e-5) { kx = 1; kz = 0; } else { kx /= kl; kz /= kl; }
-    pState.kx[i] = kx; pState.kz[i] = kz;
-    pState.tilt[i] = Math.acos(Math.max(-1, Math.min(1, ay)));
-    pState.dir[i] = rng() < 0.5 ? -1 : 1;
-    pState.yj[i] = (rng() + rng() + rng() - 1.5) / 1.5;
-    for (let k = 0; k < 3; k++) {
-      pState.wf[i * 3 + k] = 0.1 + rng() * 0.35;
-      pState.wp[i * 3 + k] = rng() * Math.PI * 2;
-    }
-    pRand[i] = rng();
-    pHeat[i] = clamp01((pState.r0[i] - 1.8) / 3.0);
-  }
-  pGeo.attributes.aRand.needsUpdate = true;
-  pGeo.attributes.aHeat.needsUpdate = true;
-}
-
-function updateParticles(dt, t, G) {
-  const target = Math.pow((G - 0.1) / 9.9, 0.6);
-  pState.order += (target - pState.order) * Math.min(1, dt * 2.5);
-  const o = pState.order, dis = 1 - o;
-  const flat = Math.pow(dis, 2.5);
-  particleUniforms.u_order.value = o;
-  for (let i = 0; i < PARTICLE_COUNT; i++) {
-    const r0 = pState.r0[i];
-    const rDisk = 1.35 + (r0 - 1.8) * 0.8;
-    const i3 = i * 3;
-    let r = r0 + (rDisk - r0) * o;
-    r += dis * 0.35 * Math.sin(t * pState.wf[i3] + pState.wp[i3]);
-    const omega = Math.sqrt(G / (r * r * r));
-    const dir = lerp(pState.dir[i], 1, o);
-    pState.theta[i] += omega * dir * dt;
-
-    const th = pState.theta[i];
-    const vx = r * Math.cos(th);
-    const vy = pState.yj[i] * (0.004 + 0.3 * flat);
-    const vz = r * Math.sin(th);
-
-    // Rodrigues rotation: disk plane -> particle's own random orbit plane, weighted by disorder.
-    const ang = pState.tilt[i] * flat;
-    const c = Math.cos(ang), s = Math.sin(ang);
-    const kx = pState.kx[i], kz = pState.kz[i];
-    const kdv = kx * vx + kz * vz;
-    const cx = -kz * vy, cy = kz * vx - kx * vz, cz = kx * vy;
-    let px = vx * c + cx * s + kx * kdv * (1 - c);
-    let py = vy * c + cy * s;
-    let pz = vz * c + cz * s + kz * kdv * (1 - c);
-
-    px += flat * 0.25 * Math.sin(t * pState.wf[i3 + 1] + pState.wp[i3 + 1]);
-    py += flat * 0.25 * Math.sin(t * pState.wf[i3 + 2] + pState.wp[i3 + 2]);
-    pz += flat * 0.25 * Math.cos(t * pState.wf[i3] + pState.wp[i3 + 1]);
-
-    pPos[i3] = px; pPos[i3 + 1] = py; pPos[i3 + 2] = pz;
-  }
-  pGeo.attributes.position.needsUpdate = true;
-}
-
-/* ---------- Post-processing ---------- */
-const composer = new EffectComposer(renderer);
-composer.setPixelRatio(pixelRatio);
-composer.setSize(window.innerWidth, window.innerHeight);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.5, 1.05);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
-
-/* =========================================================================
-   PARAMETERS + META-LOGIC
-   ========================================================================= */
-const PALETTES = [
-  ['#3d6b2f', '#8a7a4a', '#d9d3c7'],
-  ['#4a6b3a', '#a08350', '#efe9e0'],
-  ['#2f5d4f', '#6f8a5a', '#c9c2b2'],
-  ['#6b5a3a', '#a8774a', '#e8d9c0'],
-  ['#3a4f6b', '#7a8aa0', '#e6ecf2'],
-  ['#5b3a6b', '#8a6aa0', '#e0d6ea'],
-  ['#6b3a2f', '#c27a4a', '#f0d2a8'],
-  ['#2f6b5d', '#c9b47a', '#f2efe6'],
-];
-
-const params = {
-  seed: Math.floor(Math.random() * 999999),
-  age: 4.5,
-  temperature: 0,
-  type: 0.0,
-  roughness: 1.0,
-  waterLevel: 0.62,
-  colorLow: PALETTES[0][0],
-  colorMid: PALETTES[0][1],
-  colorHigh: PALETTES[0][2],
-  hasRings: true,
-  ringComposition: 0.0,
-  ringDensity: 0.6,
-  gravity: 1.2,
-  axialTilt: 18,
-  sunAngle: 32,
-  bloom: 0.55,
-  timeScale: 1.0,
-  autoRotate: false,
-  randomize: () => randomizeSeed(),
-};
-
-const derived = { rotation: 0.3 };
-
-function deriveState() {
-  const T = params.temperature / 50;
-  const A = params.age;
-
-  const cold = smoothstep(0, 1, -T);
-  const hot = smoothstep(0, 1, T);
-  const evap = smoothstep(0.15, 0.8, T);
-  const inferno = smoothstep(0.8, 1.0, T);
-  const young = 1 - smoothstep(0.4, 1.6, A);
-  const old = smoothstep(6.5, 9.5, A);
-  const mature = (1 - young) * (1 - old);
-
-  const water = params.waterLevel * (1 - evap) * (1 - 0.85 * old) * (1 - 0.5 * young);
-  const seaFrom = (w) => lerp(-1.0, 0.6, w);
-  const seaLevel = water <= 0.002 ? -5 : seaFrom(water);
-  const baseSea = seaFrom(params.waterLevel);
-
-  const amp = 0.045 * params.roughness * (1 - 0.7 * old) * (1 + 0.25 * young);
-  const persistence = lerp(lerp(0.56, 0.5, smoothstep(0, 1, 1 - young)), 0.3, old);
-  const mountain = lerp(0.55, 1.0, mature) * (1 - 0.6 * old) + young * 0.15;
-  const crater = lerp(0.12, 0.65, old) + young * 0.35;
-
-  let iceLat = 0.86 - 0.98 * smoothstep(0.05, 1.0, cold);
-  iceLat += 0.5 * smoothstep(0.0, 0.4, T);
-  const freeze = smoothstep(0.25, 0.75, cold);
-  const snowLine = 0.8 + 0.8 * hot - 0.75 * cold;
-  const scorch = smoothstep(0.15, 0.85, T);
-  const lava = young * (1 - 0.5 * cold);
-
-  let atm = [0.35, 0.6, 1.0];
-  atm = lerp3(atm, [0.62, 0.8, 1.0], cold);
-  atm = lerp3(atm, [1.0, 0.72, 0.3], hot);
-  atm = lerp3(atm, [0.34, 0.25, 0.2], young * 0.85);
-  const density = (1 - 0.55 * cold) * (1 + 0.7 * hot) * (1 + 0.8 * young) * (1 - 0.93 * old);
-  const haze = Math.min(0.85, 0.45 * hot + 0.55 * young) * (1 - 0.9 * old);
-  const clouds = 0.55 * smoothstep(0, 0.3, water) * (1 - hot) * (1 - old) * (1 - 0.5 * young) * (1 - 0.6 * freeze);
-
-  const rotation = lerp(0.9, 0.12, smoothstep(0, 3, A)) * (1 - 0.6 * old);
-
-  return { T, A, cold, hot, evap, inferno, young, old, mature, water, seaLevel, baseSea, amp, persistence,
-    mountain, crater, iceLat, freeze, snowLine, scorch, lava, atm, density, haze, clouds, rotation };
-}
-
-const hud = {
-  seed: document.getElementById('hud-seed'),
-  era: document.getElementById('hud-era'),
-  climate: document.getElementById('hud-climate'),
-  body: document.getElementById('hud-body'),
-  water: document.getElementById('hud-water'),
-  atm: document.getElementById('hud-atm'),
-  spin: document.getElementById('hud-spin'),
-  debris: document.getElementById('hud-debris'),
-  bar: document.getElementById('hud-temp-bar'),
-};
-
-function applyState() {
-  const s = deriveState();
-  const u = planetUniforms;
-  u.u_amp.value = s.amp;
-  u.u_persistence.value = s.persistence;
-  u.u_mountain.value = s.mountain;
-  u.u_crater.value = s.crater;
-  u.u_seaLevel.value = s.seaLevel;
-  u.u_baseSea.value = s.baseSea;
-  u.u_gas.value = params.type;
-  u.u_iceLat.value = s.iceLat;
-  u.u_freeze.value = s.freeze;
-  u.u_snowLine.value = s.snowLine;
-  u.u_scorch.value = s.scorch;
-  u.u_cold.value = s.cold;
-  u.u_lava.value = s.lava;
-  u.u_inferno.value = s.inferno;
-  u.u_clouds.value = s.clouds;
-  u.u_haze.value = s.haze;
-  u.u_hasRings.value = params.hasRings ? 1 : 0;
-  atmDensity.value = s.density;
-  atmColor.setRGB(s.atm[0], s.atm[1], s.atm[2]);
-  derived.rotation = s.rotation;
-
-  rings.visible = params.hasRings;
-  ringUniforms.u_ringComp.value = params.ringComposition;
-  shared.u_ringDensity.value = params.ringDensity;
-
-  system.rotation.z = THREE.MathUtils.degToRad(params.axialTilt);
-  system.updateMatrixWorld(true);
-  shared.u_ringNormal.value.set(0, 1, 0).applyQuaternion(system.quaternion).normalize();
-
-  const az = THREE.MathUtils.degToRad(params.sunAngle);
-  shared.u_sunDir.value.set(Math.cos(az) * 0.96, 0.28, Math.sin(az) * 0.96).normalize();
-
-  bloom.strength = params.bloom;
-  controls.autoRotate = params.autoRotate;
-
-  // HUD readouts
-  const A = params.age, Tc = params.temperature;
-  hud.seed.textContent = params.seed;
-  hud.era.textContent = A < 1.5 ? 'Proto-Planet' : A < 6.5 ? 'Stable Era' : 'Entropy Era';
-  hud.climate.textContent = s.inferno > 0.5 ? 'Inferno' : Tc <= -30 ? 'Glacial' : Tc < -10 ? 'Cold' : Tc <= 15 ? 'Temperate' : 'Scorched';
-  hud.body.textContent = params.type > 0.8 ? 'Gas giant · storms' : params.type > 0.35 ? 'Transitional' : 'Terrestrial';
-  if (params.type > 0.8) hud.water.textContent = 'n/a';
-  else if (s.water <= 0.002) hud.water.textContent = s.evap > 0.5 ? 'Evaporated' : 'Dried up';
-  else hud.water.textContent = `${Math.round(s.water * 100)}%${s.freeze > 0.5 ? ' · frozen' : ''}`;
-  const atmLabel = s.old > 0.6 ? 'stripped' : s.young > 0.5 ? 'volcanic smog' : s.hot > 0.4 ? 'sulfur haze' : s.cold > 0.4 ? 'thin' : 'nitrogen-oxygen';
-  hud.atm.textContent = `${Math.round(s.density * 100)}% · ${atmLabel}`;
-  hud.spin.textContent = `${s.rotation.toFixed(2)} rad/s`;
-  hud.bar.style.width = `${((Tc + 50) / 100) * 100}%`;
-}
-
-function setPalette(p) {
-  params.colorLow = p[0]; params.colorMid = p[1]; params.colorHigh = p[2];
-  applyColors();
-}
-function applyColors() {
-  planetUniforms.u_c1.value.set(params.colorLow);
-  planetUniforms.u_c2.value.set(params.colorMid);
-  planetUniforms.u_c3.value.set(params.colorHigh);
-}
-
-function applySeed() {
-  params.seed = Math.max(0, Math.floor(Number(params.seed) || 0));
-  const rng = mulberry32(params.seed);
-  shared.u_seed.value.set(rng() * 200 - 100, rng() * 200 - 100, rng() * 200 - 100);
-  initParticles(params.seed);
-  applyState();
-}
-
-function randomizeSeed() {
-  params.seed = Math.floor(Math.random() * 999999);
-  const rng = mulberry32(params.seed + 1);
-  setPalette(PALETTES[Math.floor(rng() * PALETTES.length)]);
-  params.axialTilt = Math.round(rng() * 35);
-  params.hasRings = rng() < 0.65;
-  params.ringComposition = Math.round(rng() * 100) / 100;
-  params.ringDensity = Math.round((0.35 + rng() * 0.55) * 100) / 100;
-  params.waterLevel = Math.round((0.45 + rng() * 0.3) * 100) / 100;
-  params.roughness = Math.round((0.7 + rng() * 0.7) * 100) / 100;
-  applySeed();
-  gui.controllersRecursive().forEach((c) => c.updateDisplay());
-}
-
-/* =========================================================================
-   GOD-MODE UI
-   ========================================================================= */
-const gui = new GUI({ title: 'God-Mode', width: 300 });
-
-const fForge = gui.addFolder('A · The Forge');
-fForge.add(params, 'randomize').name('Randomize Seed');
-fForge.add(params, 'seed').name('Seed').step(1).onFinishChange(applySeed);
-fForge.add(params, 'age', 0, 10, 0.01).name('Age (Byr)').onChange(applyState);
-fForge.add(params, 'temperature', -50, 50, 0.5).name('Temperature (Δ°C)').onChange(applyState);
-
-const fSurface = gui.addFolder('B · Surface Physics');
-fSurface.add(params, 'type', 0, 1, 0.01).name('Type (Rock → Gas)').onChange(applyState);
-fSurface.add(params, 'roughness', 0, 2.5, 0.01).name('Roughness').onChange(applyState);
-fSurface.add(params, 'waterLevel', 0, 1, 0.01).name('Water Level').onChange(applyState);
-fSurface.addColor(params, 'colorLow').name('Lowland Color').onChange(applyColors);
-fSurface.addColor(params, 'colorMid').name('Highland Color').onChange(applyColors);
-fSurface.addColor(params, 'colorHigh').name('Summit Color').onChange(applyColors);
-
-const fRings = gui.addFolder('C · Ring System');
-fRings.add(params, 'hasRings').name('Has Rings').onChange(applyState);
-fRings.add(params, 'ringComposition', 0, 1, 0.01).name('Ice → Rock → Plasma').onChange(applyState);
-fRings.add(params, 'ringDensity', 0, 1, 0.01).name('Density').onChange(applyState);
-
-const fGravity = gui.addFolder('D · Gravity Well');
-fGravity.add(params, 'gravity', 0.1, 10, 0.1).name('Gravity (G)');
-
-const fRender = gui.addFolder('Render').close();
-fRender.add(params, 'axialTilt', 0, 60, 1).name('Axial Tilt (°)').onChange(applyState);
-fRender.add(params, 'sunAngle', 0, 360, 1).name('Sun Azimuth (°)').onChange(applyState);
-fRender.add(params, 'bloom', 0, 2, 0.01).name('Bloom').onChange(applyState);
-fRender.add(params, 'timeScale', 0, 4, 0.01).name('Time Scale');
-fRender.add(params, 'autoRotate').name('Orbit Camera').onChange(applyState);
-
-if (window.innerWidth < 720) {
-  [fSurface, fRings, fGravity].forEach((f) => f.close());
-  gui.close();
-}
-
-applyColors();
-applySeed();
-
-/* =========================================================================
-   LOOP
-   ========================================================================= */
-const clock = new THREE.Clock();
-let simTime = 0;
-let frames = 0;
-const loader = document.getElementById('loader');
-
-function frame() {
-  const dt = Math.min(clock.getDelta(), 0.05);
-  const sdt = dt * params.timeScale;
-  simTime += sdt;
-  shared.u_time.value = simTime;
-
-  planet.rotation.y += derived.rotation * sdt;
-  planet.updateMatrixWorld();
-  planetUniforms.u_planetRot.value.setFromMatrix4(planet.matrixWorld);
-
-  updateParticles(sdt, simTime, params.gravity);
-  const o = pState.order;
-  hud.debris.textContent = o < 0.3 ? 'Diffuse cloud' : o < 0.75 ? 'Settling' : 'Accretion disk';
-
-  controls.update();
-  composer.render();
-
-  if (++frames === 2) loader.classList.add('done');
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-window.addEventListener('resize', () => {
-  const w = window.innerWidth, h = window.innerHeight;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.setSize(w, h);
-});
-</script>
+  <div id="app">
+    <header>
+      <span class="dot"></span>
+      <h1>Puter Chat</h1>
+      <select id="model-select" aria-label="Select AI model"></select>
+    </header>
+
+    <div id="messages" role="log" aria-live="polite"></div>
+
+    <div id="input-bar">
+      <textarea id="user-input" rows="1" placeholder="Message…"
+                autocomplete="off" aria-label="Type your message"></textarea>
+      <button id="send-btn" aria-label="Send message" disabled>
+        <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+      </button>
+    </div>
+
+    <div class="powered">
+      Powered by <a href="https://developer.puter.com" target="_blank" rel="noopener">Puter</a>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      "use strict";
+
+      // ============================================================
+      //  MODEL CONFIGURATION
+      //  Puter retires model IDs over time. These are the current
+      //  Claude models, newest first. If the selected one 404s,
+      //  the app automatically falls back down the list.
+      // ============================================================
+      const MODEL_CHAIN = [
+        "claude-sonnet-4",
+        "claude-3-7-sonnet",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-sonnet",
+        "gpt-4o-mini",
+      ];
+
+      let currentModel = MODEL_CHAIN[0];
+
+      // ---------- DOM ----------
+      const messagesEl = document.getElementById("messages");
+      const inputEl = document.getElementById("user-input");
+      const sendBtn = document.getElementById("send-btn");
+      const modelSelect = document.getElementById("model-select");
+
+      // ---------- State ----------
+      const conversation = [
+        {
+          role: "system",
+          content:
+            "You are a helpful, friendly assistant. Keep answers concise and clear. " +
+            "Use plain text; avoid markdown unless the user asks for it.",
+        },
+      ];
+      let isWaiting = false;
+
+      // ============================================================
+      //  RENDER HELPERS
+      // ============================================================
+      function scrollToBottom() {
+        requestAnimationFrame(() => {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+        });
+      }
+
+      function appendBubble(text, role, extraClass, modelName) {
+        const row = document.createElement("div");
+        row.className = "msg-row " + role;
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble" + (extraClass ? " " + extraClass : "");
+        bubble.textContent = text;
+
+        if (modelName) {
+          const tag = document.createElement("span");
+          tag.className = "model-tag";
+          tag.textContent = modelName;
+          bubble.appendChild(tag);
+        }
+
+        row.appendChild(bubble);
+        messagesEl.appendChild(row);
+        scrollToBottom();
+        return bubble;
+      }
+
+      function appendSystemNote(text) {
+        const note = document.createElement("div");
+        note.className = "system-note";
+        note.textContent = text;
+        messagesEl.appendChild(note);
+        scrollToBottom();
+      }
+
+      function showTyping() {
+        const row = document.createElement("div");
+        row.className = "msg-row ai";
+        row.id = "typing-row";
+
+        const bubble = document.createElement("div");
+        bubble.className = "bubble";
+        bubble.style.padding = "10px 14px";
+
+        const typing = document.createElement("div");
+        typing.className = "typing";
+        for (let i = 0; i < 3; i++) typing.appendChild(document.createElement("span"));
+
+        bubble.appendChild(typing);
+        row.appendChild(bubble);
+        messagesEl.appendChild(row);
+        scrollToBottom();
+        return row;
+      }
+
+      function removeTyping() {
+        const el = document.getElementById("typing-row");
+        if (el) el.remove();
+      }
+
+      // ============================================================
+      //  PUTER CALL WITH FALLBACK
+      // ============================================================
+      function isModelError(err) {
+        const m = String((err && err.message) || err || "").toLowerCase();
+        return (
+          m.includes("model not found") ||
+          m.includes("no such model") ||
+          m.includes("unsupported model") ||
+          m.includes("invalid model") ||
+          m.includes("does not exist") ||
+          m.includes("not available")
+        );
+      }
+
+      function extractText(response) {
+        if (!response) return "";
+        if (typeof response === "string") return response;
+
+        const content = response.message ? response.message.content : response.content;
+        if (typeof content === "string") return content;
+
+        if (Array.isArray(content)) {
+          return content
+            .map((block) => (typeof block === "string" ? block : block.text || ""))
+            .join("");
+        }
+        return "";
+      }
+
+      /**
+       * Tries the preferred model first, then walks down MODEL_CHAIN
+       * if the model isn't found. Returns { text, model }.
+       */
+      async function chatWithFallback(history) {
+        const chain = [
+          currentModel,
+          ...MODEL_CHAIN.filter((m) => m !== currentModel),
+        ];
+
+        let lastError = null;
+
+        for (const model of chain) {
+          try {
+            const response = await puter.ai.chat(history, {
+              model: model,
+              normalize: true,
+            });
+
+            const text = extractText(response);
+            if (!text) throw new Error("Empty response from " + model);
+
+            return { text, model };
+          } catch (err) {
+            lastError = err;
+            const msg = String((err && err.message) || err);
+
+            if (isModelError(err)) {
+              console.warn(`Model "${model}" unavailable, trying next…`);
+              continue; // try the next model in the chain
+            }
+            throw err; // real error (auth, network, quota) — surface it
+          }
+        }
+
+        throw lastError || new Error("No available model could be reached.");
+      }
+
+      // ============================================================
+      //  INPUT HANDLING
+      // ============================================================
+      function autoResize() {
+        inputEl.style.height = "auto";
+        inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + "px";
+      }
+
+      function updateSendState() {
+        sendBtn.disabled = inputEl.value.trim().length === 0 || isWaiting;
+      }
+
+      inputEl.addEventListener("input", () => {
+        autoResize();
+        updateSendState();
+      });
+
+      inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      sendBtn.addEventListener("click", sendMessage);
+
+      // ============================================================
+      //  SEND MESSAGE
+      // ============================================================
+      async function sendMessage() {
+        const text = inputEl.value.trim();
+        if (!text || isWaiting) return;
+
+        appendBubble(text, "user");
+        conversation.push({ role: "user", content: text });
+
+        inputEl.value = "";
+        autoResize();
+        isWaiting = true;
+        updateSendState();
+        showTyping();
+
+        try {
+          const { text: reply, model } = await chatWithFallback(conversation);
+
+          removeTyping();
+          appendBubble(reply, "ai", null, model);
+
+          // If we silently switched models, tell the user once.
+          if (model !== currentModel) {
+            currentModel = model;
+            if (![...modelSelect.options].some((o) => o.value === model)) {
+              modelSelect.add(new Option(model, model));
+            }
+            modelSelect.value = model;
+            appendSystemNote(`Switched to available model: ${model}`);
+          }
+
+          conversation.push({ role: "assistant", content: reply });
+        } catch (err) {
+          console.error("Puter.ai.chat error:", err);
+          removeTyping();
+          const msg = (err && err.message) || "Something went wrong contacting the AI.";
+          appendBubble("⚠️ " + msg, "ai", "error-bubble");
+        } finally {
+          isWaiting = false;
+          updateSendState();
+          inputEl.focus();
+        }
+      }
+
+      // ============================================================
+      //  INIT
+      // ============================================================
+      (function init() {
+        MODEL_CHAIN.forEach((m) => modelSelect.add(new Option(m, m)));
+        modelSelect.value = currentModel;
+
+        modelSelect.addEventListener("change", () => {
+          currentModel = modelSelect.value;
+          appendSystemNote(`Model set to ${currentModel}`);
+        });
+
+        appendBubble(
+          "Hi! I'm running entirely in your browser via Puter.js. " +
+          "Pick a model in the top-right corner, then ask me anything.",
+          "ai"
+        );
+        inputEl.focus();
+      })();
+    })();
+  </script>
 </body>
 </html>
