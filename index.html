@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Puter Chat</title>
+  <title>Puter Chat · Claude 3.7</title>
   <script src="https://js.puter.com/v2/"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -263,7 +263,7 @@
   <div id="app">
     <header>
       <span class="dot"></span>
-      <h1>Puter Chat</h1>
+      <h1>Puter Chat · Claude 3.7</h1>
       <select id="model-select" aria-label="Select AI model"></select>
     </header>
 
@@ -287,20 +287,18 @@
       "use strict";
 
       // ============================================================
-      //  MODEL CONFIGURATION
-      //  Puter retires model IDs over time. These are the current
-      //  Claude models, newest first. If the selected one 404s,
-      //  the app automatically falls back down the list.
+      //  MODEL CONFIGURATION — Claude 3.7 Sonnet first
       // ============================================================
       const MODEL_CHAIN = [
+        "claude-3-7-sonnet",          // ← primary: Claude 3.7 Sonnet
+        "claude-3-7-sonnet-latest",
         "claude-sonnet-4",
-        "claude-3-7-sonnet",
         "claude-3-5-sonnet-latest",
         "claude-3-5-sonnet",
         "gpt-4o-mini",
       ];
 
-      let currentModel = MODEL_CHAIN[0];
+      let currentModel = MODEL_CHAIN[0];   // "claude-3-7-sonnet"
 
       // ---------- DOM ----------
       const messagesEl = document.getElementById("messages");
@@ -313,8 +311,8 @@
         {
           role: "system",
           content:
-            "You are a helpful, friendly assistant. Keep answers concise and clear. " +
-            "Use plain text; avoid markdown unless the user asks for it.",
+            "You are a helpful, friendly assistant powered by Claude 3.7 Sonnet. " +
+            "Keep answers concise and clear. Use plain text; avoid markdown unless the user asks for it.",
         },
       ];
       let isWaiting = false;
@@ -412,10 +410,6 @@
         return "";
       }
 
-      /**
-       * Tries the preferred model first, then walks down MODEL_CHAIN
-       * if the model isn't found. Returns { text, model }.
-       */
       async function chatWithFallback(history) {
         const chain = [
           currentModel,
@@ -441,9 +435,9 @@
 
             if (isModelError(err)) {
               console.warn(`Model "${model}" unavailable, trying next…`);
-              continue; // try the next model in the chain
+              continue;
             }
-            throw err; // real error (auth, network, quota) — surface it
+            throw err;
           }
         }
 
@@ -498,7 +492,6 @@
           removeTyping();
           appendBubble(reply, "ai", null, model);
 
-          // If we silently switched models, tell the user once.
           if (model !== currentModel) {
             currentModel = model;
             if (![...modelSelect.options].some((o) => o.value === model)) {
@@ -534,7 +527,7 @@
         });
 
         appendBubble(
-          "Hi! I'm running entirely in your browser via Puter.js. " +
+          "Hi! I'm running on Claude 3.7 Sonnet via Puter.js. " +
           "Pick a model in the top-right corner, then ask me anything.",
           "ai"
         );
